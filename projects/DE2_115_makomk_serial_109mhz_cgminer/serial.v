@@ -12,6 +12,14 @@ module serial_receive(clk, RxD, midstate, data2, rx_done);
    wire [7:0] RxD_data;
 
    parameter comm_clk_frequency = 109_000_000;
+
+   `ifdef CONFIG_SERIAL_TIMEOUT
+	parameter SERIAL_TIMEOUT = `CONFIG_SERIAL_TIMEOUT;
+   `else
+        // Timeout after 8 million clock at 100Mhz is 80ms, which should be
+        // OK for all sensible clock speeds eg 20MHz is 400ms, 200MHz is 40ms
+	parameter SERIAL_TIMEOUT = 24'h800000;
+   `endif
    
    uart_receiver #(.comm_clk_frequency(comm_clk_frequency)) urx (.clk(clk), .uart_rx(RxD), .tx_new_byte(RxD_data_ready), .tx_byte(RxD_data));
    
@@ -25,6 +33,7 @@ module serial_receive(clk, RxD, midstate, data2, rx_done);
    reg [511:0] input_buffer;
    reg [511:0] input_copy;
    reg [6:0]   demux_state = 7'b0000000;
+   reg [23:0]  timer = 0;
 
    assign midstate = input_copy[511:256];
    assign data2 = input_copy[255:0];
@@ -48,6 +57,13 @@ module serial_receive(clk, RxD, midstate, data2, rx_done);
 	      input_buffer <= input_buffer << 8;
 	      input_buffer[7:0] <= RxD_data;
 	      demux_state <= demux_state + 1;
+	      timer <= 0;
+	   end
+	 else
+	   begin
+	      timer <= timer + 1;
+	      if (timer == SERIAL_TIMEOUT)
+	        demux_state <= 0;
 	   end
      endcase // case (demux_state)
    
